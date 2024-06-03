@@ -14,9 +14,9 @@ topic = "#"
 # generate client ID with pub prefix randomly
 client_id = f'python-mqtt-{random.randint(0, 1000)}'
 topic2db = {
-    "balkon_solar/114184914146/0/power": "current",
-    "balkon_solar/114184914146/1/yieldday": "day",
-    "balkon_solar/114184914146/0/yieldtotal": "total"
+    "balkon_solar/ac/power": "current",
+    "balkon_solar/ac/yieldday": "day",
+    "balkon_solar/ac/yieldtotal": "total"
 }
 
 
@@ -37,20 +37,22 @@ def subscribe(client: mqtt_client):
     def on_message(client, userdata, msg):
         influx_client = InfluxDBClient(url=url, token = os.environ.get("INFLUXDB_TOKEN"), org=org)
         today = datetime.datetime.now()
-        bucket = "balkon_solar"
 
         print(today.strftime("%x"))
         print(today)
         print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
 
-        write_api = influx_client.write_api(write_options=ASYNCHRONOUS)
+        writeToInflux(influx_client, msg)
 
+    def writeToInflux(influx_client, msg):
+        today = datetime.datetime.now()
+        bucket = "balkon_solar"
+        write_api = influx_client.write_api(write_options=ASYNCHRONOUS)
         point = (
             Point(topic2db.get(msg.topic))
             .tag("date", today.strftime("%x"))
             .field("value", float(msg.payload.decode()))
         )
-
         write_api.write(bucket=bucket, org="schorschis", record=point)
         write_api.flush()
         write_api.close()
