@@ -1,7 +1,9 @@
 # python 3.6
 import random
 import datetime
-import  os, time
+import json
+import os
+import time
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS, ASYNCHRONOUS
 from paho.mqtt import client as mqtt_client
@@ -14,9 +16,7 @@ topic = "#"
 # generate client ID with pub prefix randomly
 client_id = f'python-mqtt-{random.randint(0, 1000)}'
 topic2db = {
-    "balkon_solar/ac/power": "current",
-    "balkon_solar/ac/yieldday": "day",
-    "balkon_solar/ac/yieldtotal": "total"
+    "sensor/moisture": "plant_moisture"
 }
 
 
@@ -35,8 +35,9 @@ def connect_mqtt() -> mqtt_client:
 
 def subscribe(client: mqtt_client):
     def on_message(client, userdata, msg):
-        influx_client = InfluxDBClient(url=url, token = "nMUkzQDM5rxjeBX9guwTRZlMBauwkl85xjfXL1cFLIwwrryvle2_fSsqUEFNINPQ375-4p8qiSc3pcwhE8vDbg==", org=org)
+        influx_client = InfluxDBClient(url=url, token = "IFRBxTGvyup3PJIW1n-a_fnRS4UYY09KQtRKUhK8eFpsMZteNNRRhqf85uk3QHDRgH9OAk2IQP15FZ-eG25Apg==")
         today = datetime.datetime.now()
+
 
         print(today.strftime("%x"))
         print(today)
@@ -44,16 +45,24 @@ def subscribe(client: mqtt_client):
 
         writeToInflux(influx_client, msg)
 
+        #deleteBuckets("balkon_solar",influx_client)
+
     def writeToInflux(influx_client, msg):
         today = datetime.datetime.now()
-        bucket = "balkon_solar"
-        write_api = influx_client.write_api(write_options=ASYNCHRONOUS)
-        point = (
-            Point(topic2db.get(msg.topic))
-            .tag("date", today.strftime("%x"))
-            .field("value", float(msg.payload.decode()))
-        )
+        bucket = "plant_moisture"
+        json_dict = json.loads(msg.payload.decode('utf-8'))
+
+        write_api = influx_client.write_api(write_options=SYNCHRONOUS)
+        point = Point(topic2db.get(msg.topic))
+        tag_item = json_dict.popitem()
+        point = point.tag(tag_item[0], tag_item[1])
+        point = point.field(tag_item[0], tag_item[1])
+
+        for key, value in json_dict.items():
+            point = point.field(key, float(value))
+            print(key, value)
         write_api.write(bucket=bucket, org="schorschis", record=point)
+        influx_client.close()
 
     def deleteBuckets(bucket, influxClient):
         del_api = influxClient.delete_api()
@@ -62,6 +71,7 @@ def subscribe(client: mqtt_client):
         del_api.delete(start, stop, '_measurement="current"', bucket=bucket, org=org)
         del_api.delete(start, stop, '_measurement="day"', bucket=bucket, org=org)
         del_api.delete(start, stop, '_measurement="total"', bucket=bucket, org=org)
+        del_api.delete(start, stop, '_measurement="deepsleep"', bucket=bucket, org=org)
 
     for topic_to_subscribe in topic2db.keys():
         client.subscribe(topic_to_subscribe)
@@ -77,3 +87,4 @@ def run():
 
 if __name__ == '__main__':
     run()
+
